@@ -3,36 +3,35 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-# Définition des variables d'Azure (que nous avons configurées)
-SERVER = os.getenv("SQL_SERVER_NAME")
-DATABASE = os.getenv("SQL_DB_NAME")
-USERNAME = os.getenv("SQL_USER")
-PASSWORD = os.getenv("SQL_PASSWORD")
+# On essaie de récupérer les informations de connexion depuis Azure
+# Ces variables ("DB_HOST", etc.) seront configurées dans Azure plus tard
+DB_HOST = os.getenv("DB_HOST")
+DB_USER = os.getenv("DB_USER")
+DB_PASS = os.getenv("DB_PASS")
+DB_NAME = os.getenv("DB_NAME", "postgres") # Par défaut, on utilise la base 'postgres'
 
-# 1. Vérifie si les variables Azure SQL existent (si OUI, c'est la prod sur Azure)
-if SERVER and DATABASE and USERNAME and PASSWORD:
-    # Construire la chaîne de connexion MSSQL (nécessite pyodbc)
-    SQLALCHEMY_DATABASE_URL = (
-        f"mssql+pyodbc://{USERNAME}:{PASSWORD}@{SERVER}:1433/{DATABASE}"
-        f"?driver=ODBC+Driver+17+for+SQL+Server"
-    )
-    # L'engine est créé ici sans le check_same_thread
-    engine = create_engine(SQLALCHEMY_DATABASE_URL)
+# LOGIQUE DE BASCULEMENT (SWITCH)
+if DB_HOST:
+    # --- MODE PRODUCTION (SUR AZURE) ---
+    print(f"Connexion à la base de données PostgreSQL : {DB_HOST}...")
+    
+    # Construction de l'URL de connexion pour PostgreSQL
+    # Format : postgresql://utilisateur:motdepasse@serveur/nom_base
+    SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}"
+    
+    # Azure exige souvent une connexion sécurisée (SSL)
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"sslmode": "require"})
 
 else:
-    # 2. Logique pour le développement local (SQLite, ou votre binôme peut y mettre Postgres local)
-    SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./travel.db")
+    # --- MODE DEVELOPPEMENT (LOCAL) ---
+    print("Aucune variable Azure détectée. Utilisation de SQLite local.")
     
-    # Si on utilise SQLite (local), on a besoin du check_same_thread
-    if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
-        engine = create_engine(
-            SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-        )
-    else:
-        # Si c'est un autre type de DB locale (Postgres local par ex)
-        engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    SQLALCHEMY_DATABASE_URL = "sqlite:///./travel.db"
+    # check_same_thread est nécessaire uniquement pour SQLite
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 
-
+# Création de la session
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Base pour les modèles
 Base = declarative_base()
